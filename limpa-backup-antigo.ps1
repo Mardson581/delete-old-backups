@@ -1,44 +1,72 @@
-## Configurações ##
-$LIMITE_DIAS = 4
-$CAMINHO_BACKUPS = 'C:\Backups'
-$NOME_PASTAS = "Backup*"
- 
-# Função para mostrar uma messagem na tela com data e hora (útil para saber o que
-# e quando aconteceu)
-# Como usar: LogInfo -Message 'sua mensagem'
+# Uso:
+#   .\limpa-backup-antigo.ps1 -WhatIf     (simulação: mostra o que seria excluído)
+#   .\limpa-backup-antigo.ps1             (exclui de verdade)
+
+[CmdletBinding(SupportsShouldProcess)]
+param (
+    [int]$LimiteDias = 4,
+    [string]$CaminhoBackups = 'C:\Backups',
+    [string]$NomePastas = 'Backup*',
+    # Nunca exclui as N pastas mais recentes, mesmo que estejam acima do limite
+    [int]$MinimoManter = 3
+)
+
+$ErrorActionPreference = 'Stop'
+
 function LogInfo {
-    param (
-        $Message
-    )
+    param ($Message)
     $dataHora = Get-Date -Format 'dd/MM/yyyy HH:mm'
-    Write-Host "[$dataHora] [INFO] $Message" -ForegroundColor "blue"
+    Write-Host "[$dataHora] [INFO] $Message" -ForegroundColor Blue
 }
- 
-# Função para mostrar um aviso na tela com data e hora (útil para saber o que
-# e quando aconteceu)
-# Como usar: LogWarning -Message 'sua mensagem'
+
 function LogWarning {
-    param (
-        $Message
-    )
+    param ($Message)
     $dataHora = Get-Date -Format 'dd/MM/yyyy HH:mm'
-    Write-Host "[$dataHora] [WARNING] $($Message)" -ForegroundColor "yellow"
+    Write-Host "[$dataHora] [WARNING] $Message" -ForegroundColor Yellow
 }
- 
-# Lista as pastas e salva cada uma na variável 'pastas'
-$pastas = @(Get-ChildItem -Directory -Filter $NOME_PASTAS)
-LogInfo -Message "Foram encontradas $($pastas.Length) pastas"
- 
-# Percorre cada pasta listada na variável 'pastas' e verifica se a data de criação
-# foi a mais de 4 dias.
-# O cálculo usa o dia atual (com o comando Get-Date), subtrai a quantidade $LIMITE_DIAS e compara se
-# a pasta foi criada antes do dia resultante.
-$dataLimite = (Get-Date).AddDays(-$LIMITE_DIAS)
+
+# Aborta se a pasta de backups não existir (evita agir no diretório errado)
+if (-not (Test-Path -LiteralPath $CaminhoBackups -PathType Container)) {
+    LogWarning -Message "Pasta de backups não encontrada: $CaminhoBackups. Abortando."
+    exit 1
+}
+
+# Lista as pastas de backup, da mais nova para a mais antiga
+$pastas = @(
+    Get-ChildItem -LiteralPath $CaminhoBackups -Directory -Filter $NomePastas |
+        Sort-Object CreationTime -Descending
+)
+LogInfo -Message "Foram encontradas $($pastas.Count) pastas em $CaminhoBackups"
+
+$dataLimite = (Get-Date).AddDays(-$LimiteDias)
 LogInfo -Message "Data limite: $($dataLimite.ToString('dd/MM/yyyy HH:mm'))"
 
-foreach ($pasta in $pastas) {
-    if ($pasta.CreationTime -le $dataLimite) {
-        LogWarning -Message "A pasta $($pasta.Name) foi criada a mais de $LIMITE_DIAS dias. Excluindo..."
-        Remove-Item -LiteralPath $pasta.FullName -Recurse -Force
+# Protege as N mais recentes; entre as demais, pega só as mais velhas que o limite
+$candidatas = @(
+    $pastas | Select-Object -Skip $MinimoManter | Where-Object { $_.CreationTime -le $dataLimite }
+)
+
+if ($candidatas.Count -eq 0) {
+    LogInfo -Message 'Nada para excluir.'
+    exit 0
+}
+
+$falhas = 0
+foreach ($pasta in $candidatas) {
+    if ($PSCmdlet.ShouldProcess($pasta.FullName, 'Excluir pasta de backup')) {
+        try {
+            LogWarning -Message "Excluindo $($pasta.Name) (criada em $($pasta.CreationTime.ToString('dd/MM/yyyy HH:mm')))"
+            Remove-Item -LiteralPath $pasta.FullName -Recurse -Force
+        }
+        catch {
+            $falhas++
+            LogWarning -Message "Falha ao excluir $($pasta.Name): $($_.Exception.Message)"
+        }
     }
 }
+
+if ($falhas -gt 0) {
+    LogWarning -Message "$falhas pasta(s) não puderam ser excluídas."
+    exit 1
+}
+LogInfo -Message 'Limpeza concluída.'
