@@ -34,6 +34,8 @@ LogInfo -Message "Foram encontradas $($pastas.Length) pastas"
 # O cálculo usa o dia atual (com o comando Get-Date), subtrai a quantidade $LIMITE_DIAS e compara se
 # a pasta foi criada antes do dia resultante.
 $dataLimite = (Get-Date).AddDays(-$LIMITE_DIAS)
+LogInfo -Message "Data limite: $($dataLimite.ToString('dd/MM/yyyy HH:mm'))"
+
 foreach ($pasta in $pastas) {
     if ($pasta.CreationTime -le $dataLimite) {
         LogWarning -Message "A pasta $($pasta.Name) foi criada a mais de $LIMITE_DIAS dias. Excluindo..."
