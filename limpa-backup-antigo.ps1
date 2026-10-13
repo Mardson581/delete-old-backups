@@ -1,14 +1,21 @@
 # Uso:
-#   .\limpa-backup-antigo.ps1 -WhatIf     (simulação: mostra o que seria excluído)
-#   .\limpa-backup-antigo.ps1             (exclui de verdade)
+#   .\limpa-backup-antigo.ps1 -WhatIf   (simulação: mostra o que seria movido)
+#   .\limpa-backup-antigo.ps1           (move os arquivos antigos para a lixeira)
+#
+# Para restaurar: mova a pasta de volta de $CaminhoLixeira\<data>\ para $CaminhoBackups.
 
 [CmdletBinding(SupportsShouldProcess)]
 param (
     [int]$LimiteDias = 4,
-    [string]$CaminhoBackups = 'C:\Backups',
-    [string]$NomePastas = 'Backup*',
-    # Nunca exclui as N pastas mais recentes, mesmo que estejam acima do limite
-    [int]$MinimoManter = 3
+    [string]$CaminhoBackups = 'C:\BKP-Sistema',
+    [string]$NomeArquivos = '*',
+    # Nunca move os N arquivos mais recentes, mesmo que estejam acima do limite
+    [int]$MinimoManter = 3,
+    # Preferencialmente no mesmo volume de $CaminhoBackups (mover vira só um renomear)
+    [string]$CaminhoLixeira = 'C:\BKP-Lixeira',
+    # 0 = nunca exclui da lixeira automaticamente (esvazie manualmente)
+    # >0 = exclui de vez os lotes que estão na lixeira há mais de N dias
+    [int]$DiasLixeira = 5
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,48 +32,101 @@ function LogWarning {
     Write-Host "[$dataHora] [WARNING] $Message" -ForegroundColor Yellow
 }
 
-# Aborta se a pasta de backups não existir (evita agir no diretório errado)
 if (-not (Test-Path -LiteralPath $CaminhoBackups -PathType Container)) {
     LogWarning -Message "Pasta de backups não encontrada: $CaminhoBackups. Abortando."
     exit 1
 }
 
-# Lista as pastas de backup, da mais nova para a mais antiga
-$pastas = @(
-    Get-ChildItem -LiteralPath $CaminhoBackups -Directory -Filter $NomePastas |
+$falhas = 0
+
+# Em outro volume, o Move-Item vira cópia + exclusão: mais lento e exige espaço livre
+$raizBackups = [IO.Path]::GetPathRoot($CaminhoBackups)
+$raizLixeira = [IO.Path]::GetPathRoot($CaminhoLixeira)
+if ($raizBackups -ne $raizLixeira) {
+    LogWarning -Message "A lixeira ($raizLixeira) está em outro volume que os backups ($raizBackups): mover será lento e exigirá espaço livre."
+}
+
+# --- 1) Move os arquivos antigos para a lixeira ---------------------------------
+
+# A própria lixeira nunca entra na lista (caso esteja dentro de $CaminhoBackups)
+$arquivos = @(
+    Get-ChildItem -LiteralPath $CaminhoBackups -Filter $NomeArquivos |
+        Where-Object { $_.FullName.TrimEnd('\') -ne $CaminhoLixeira.TrimEnd('\') } |
         Sort-Object CreationTime -Descending
 )
-LogInfo -Message "Foram encontradas $($pastas.Count) pastas em $CaminhoBackups"
+LogInfo -Message "Foram encontradas $($arquivos.Count) arquivos em $CaminhoBackups"
 
 $dataLimite = (Get-Date).AddDays(-$LimiteDias)
 LogInfo -Message "Data limite: $($dataLimite.ToString('dd/MM/yyyy HH:mm'))"
 
 # Protege as N mais recentes; entre as demais, pega só as mais velhas que o limite
 $candidatas = @(
-    $pastas | Select-Object -Skip $MinimoManter | Where-Object { $_.CreationTime -le $dataLimite }
+    $arquivos | Select-Object -Skip $MinimoManter | Where-Object { $_.CreationTime -le $dataLimite }
 )
 
 if ($candidatas.Count -eq 0) {
-    LogInfo -Message 'Nada para excluir.'
-    exit 0
+    LogInfo -Message 'Nenhuma pasta para mover.'
+}
+else {
+    # Um lote por dia: C:\BKP-LIXO\2026-10-13\
+    $loteDia = Join-Path $caminhoLixeira (Get-Date -Format 'yyyy-MM-dd')
+
+    foreach ($arquivos in $candidatas) {
+        if ($PSCmdlet.ShouldProcess($arquivos.FullName, "Mover para $loteDia")) {
+            try {
+                if (-not (Test-Path -LiteralPath $loteDia)) {
+                    New-Item -ItemType Directory -Path $loteDia -Force | Out-Null
+                }
+
+                # Se já existir uma pasta com o mesmo nome no lote, acrescenta a hora
+                $destino = Join-Path $loteDia $pasta.Name
+                if (Test-Path -LiteralPath $destino) {
+                    $destino = Join-Path $loteDia ('{0}_{1}' -f $arquivos.Name, (Get-Date -Format 'HHmmss'))
+                }
+
+                LogWarning -Message "Movendo $($pasta.Name) para a lixeira (criada em $($pasta.CreationTime.ToString('dd/MM/yyyy HH:mm')))"
+                Move-Item -LiteralPath $arquivos.FullName -Destination $destino
+            }
+            catch {
+                $falhas++
+                LogWarning -Message "Falha ao mover $($arquivos.Name): $($_.Exception.Message)"
+            }
+        }
+    }
 }
 
-$falhas = 0
-foreach ($pasta in $candidatas) {
-    if ($PSCmdlet.ShouldProcess($pasta.FullName, 'Excluir pasta de backup')) {
-        try {
-            LogWarning -Message "Excluindo $($pasta.Name) (criada em $($pasta.CreationTime.ToString('dd/MM/yyyy HH:mm')))"
-            Remove-Item -LiteralPath $pasta.FullName -Recurse -Force
+# --- 2) Esvazia da lixeira o que passou do prazo (opcional) --------------------
+
+if ($DiasLixeira -gt 0 -and (Test-Path -LiteralPath $caminhoLixeira -PathType Container)) {
+    $limiteLixeira = (Get-Date).Date.AddDays(-$DiasLixeira)
+
+    foreach ($lote in Get-ChildItem -LiteralPath $caminhoLixeira -Directory) {
+        # O nome do lote é a data em que foi para a lixeira (não depende de CreationTime)
+        $dataLote = [datetime]::MinValue
+        $ok = [datetime]::TryParseExact($lote.Name, 'yyyy-MM-dd',
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::None, [ref]$dataLote)
+
+        if (-not $ok) {
+            LogWarning -Message "Ignorando '$($lote.Name)' na lixeira (nome fora do padrão yyyy-MM-dd)."
+            continue
         }
-        catch {
-            $falhas++
-            LogWarning -Message "Falha ao excluir $($pasta.Name): $($_.Exception.Message)"
+
+        if ($dataLote -le $limiteLixeira -and $PSCmdlet.ShouldProcess($lote.FullName, 'Excluir definitivamente')) {
+            try {
+                LogWarning -Message "Excluindo definitivamente o lote $($lote.Name)"
+                Remove-Item -LiteralPath $lote.FullName -Recurse -Force
+            }
+            catch {
+                $falhas++
+                LogWarning -Message "Falha ao excluir o lote $($lote.Name): $($_.Exception.Message)"
+            }
         }
     }
 }
 
 if ($falhas -gt 0) {
-    LogWarning -Message "$falhas pasta(s) não puderam ser excluídas."
+    LogWarning -Message "$falhas operação(ões) falharam."
     exit 1
 }
-LogInfo -Message 'Limpeza concluída.'
+LogInfo -Message 'Concluído.'

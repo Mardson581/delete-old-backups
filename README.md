@@ -8,10 +8,12 @@ Script em Powershell para automatizar a limpeza de backups antigos, removendo aq
 
 | Parâmetro | Padrão     | Descrição                |
 | :-------- | :------- | :------------------------- |
-| `LimiteDias` | 4 | Número de dias de retenção. Pastas com data de criação igual ou anterior à data limite são elegíveis para exclusão |
-`CaminhoBackups`| C:\Backups | Caminho do diretório que contém as pastas de backup. |
-`NomePastas` | Backup* | Filtro utilizado para identificar as pastas que serão consideradas na limpeza. |
+| `LimiteDias` | 4 | Número de dias de retenção. Pastas com data de criação igual ou anterior à data limite são elegíveis para a lixeira |
+`CaminhoBackups`| C:\BKP-Sistema | Caminho do diretório que contém as pastas de backup. |
+`NomeArquivos` | * | Filtro utilizado para identificar as pastas que serão consideradas na limpeza. |
 `MinimoManter` | 3 | Quantidade de pastas mais recentes que devem ser preservadas, independentemente da idade. |
+`CaminhoLixeira` | C:\BKP-Lixeira | Diretório para onde as pastas vão ao invés de serem excluídas |
+`DiasLixeira` | 5 | Quantidade de dias em que os arquivos ficarão na lixeira antes de serem excluídos |
 ## Exemplos
 
 #### Rodar em modo de simulação (não apaga nenhuma pasta, apenas indica)
@@ -26,7 +28,7 @@ Script em Powershell para automatizar a limpeza de backups antigos, removendo aq
 
 ##### Executar com parâmetros personalizados
 ```powershell
-.\limpa-backup-antigo.ps1 -LimiteDias 3 -CaminhoBackups 'D:/Dados/Backups' -NomePastas 'Backup-Dia-*' -MinimoManter 3 -WhatIf
+.\limpa-backup-antigo.ps1 -LimiteDias 3 -CaminhoBackups 'D:/Dados/Backups' -NomePastas 'Backup-Dia-*' -MinimoManter 3 -CaminhoLixeira "D:/Lixeira" -DiasLixeira 10 -WhatIf
 ```
 
 
