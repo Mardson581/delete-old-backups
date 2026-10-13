@@ -71,7 +71,7 @@ else {
     # Um lote por dia: C:\BKP-LIXO\2026-10-13\
     $loteDia = Join-Path $caminhoLixeira (Get-Date -Format 'yyyy-MM-dd')
 
-    foreach ($arquivos in $candidatas) {
+    foreach ($arquivo in $candidatas) {
         if ($PSCmdlet.ShouldProcess($arquivos.FullName, "Mover para $loteDia")) {
             try {
                 if (-not (Test-Path -LiteralPath $loteDia)) {
@@ -79,17 +79,17 @@ else {
                 }
 
                 # Se já existir uma pasta com o mesmo nome no lote, acrescenta a hora
-                $destino = Join-Path $loteDia $pasta.Name
+                $destino = Join-Path $loteDia $arquivo.Name
                 if (Test-Path -LiteralPath $destino) {
                     $destino = Join-Path $loteDia ('{0}_{1}' -f $arquivos.Name, (Get-Date -Format 'HHmmss'))
                 }
 
-                LogWarning -Message "Movendo $($pasta.Name) para a lixeira (criada em $($pasta.CreationTime.ToString('dd/MM/yyyy HH:mm')))"
-                Move-Item -LiteralPath $arquivos.FullName -Destination $destino
+                LogWarning -Message "Movendo $($arquivo.Name) para a lixeira (criada em $($arquivo.CreationTime.ToString('dd/MM/yyyy HH:mm')))"
+                Move-Item -LiteralPath $arquivo.FullName -Destination $destino
             }
             catch {
                 $falhas++
-                LogWarning -Message "Falha ao mover $($arquivos.Name): $($_.Exception.Message)"
+                LogWarning -Message "Falha ao mover $($arquivo.Name): $($_.Exception.Message)"
             }
         }
     }
