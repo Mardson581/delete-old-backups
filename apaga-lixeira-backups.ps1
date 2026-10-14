@@ -1,11 +1,19 @@
 [CmdletBinding(SupportsShouldProcess)]
 param (
-    # Preferencialmente no mesmo volume de $CaminhoBackups (mover vira só um renomear)
-    [string]$CaminhoLixeira = 'C:\BKP-Lixeira'
+    # Mesma pasta usada como lixeira pelo limpa-backup-antigo.ps1
+    [string]$CaminhoLixeira = 'C:\BKP-Lixeira',
     # 0 = nunca exclui da lixeira automaticamente (esvazie manualmente)
     # >0 = exclui de vez os lotes que estão na lixeira há mais de N dias
     [int]$DiasLixeira = 4
 )
+
+$ErrorActionPreference = 'Stop'
+
+function LogInfo {
+    param ($Message)
+    $dataHora = Get-Date -Format 'dd/MM/yyyy HH:mm'
+    Write-Host "[$dataHora] [INFO] $Message" -ForegroundColor Blue
+}
 
 function LogWarning {
     param ($Message)
@@ -13,10 +21,18 @@ function LogWarning {
     Write-Host "[$dataHora] [WARNING] $Message" -ForegroundColor Yellow
 }
 
-if ($DiasLixeira -gt 0 -and (Test-Path -LiteralPath $caminhoLixeira -PathType Container)) {
+$falhas = 0
+
+if ($DiasLixeira -le 0) {
+    LogInfo -Message 'DiasLixeira = 0: nada será excluído automaticamente.'
+}
+elseif (-not (Test-Path -LiteralPath $CaminhoLixeira -PathType Container)) {
+    LogWarning -Message "Lixeira não encontrada: $CaminhoLixeira. Nada a fazer."
+}
+else {
     $limiteLixeira = (Get-Date).Date.AddDays(-$DiasLixeira)
 
-    foreach ($lote in Get-ChildItem -LiteralPath $caminhoLixeira -Directory) {
+    foreach ($lote in Get-ChildItem -LiteralPath $CaminhoLixeira -Directory) {
         # O nome do lote é a data em que foi para a lixeira (não depende de CreationTime)
         $dataLote = [datetime]::MinValue
         $ok = [datetime]::TryParseExact($lote.Name, 'yyyy-MM-dd',
@@ -45,3 +61,5 @@ if ($falhas -gt 0) {
     LogWarning -Message "$falhas operação(ões) falharam."
     exit 1
 }
+
+LogInfo -Message 'Concluído.'

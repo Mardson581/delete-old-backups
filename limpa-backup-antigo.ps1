@@ -36,6 +36,9 @@ if (-not (Test-Path -LiteralPath $CaminhoBackups -PathType Container)) {
 
 $falhas = 0
 
+# Caminho completo e normalizado da lixeira (aceita 'D:/Lixeira' ou 'D:\Lixeira')
+$lixeiraCompleta = [IO.Path]::GetFullPath($CaminhoLixeira).TrimEnd('\')
+
 # Em outro volume, o Move-Item vira cópia + exclusão: mais lento e exige espaço livre
 $raizBackups = [IO.Path]::GetPathRoot($CaminhoBackups)
 $raizLixeira = [IO.Path]::GetPathRoot($CaminhoLixeira)
@@ -48,7 +51,7 @@ if ($raizBackups -ne $raizLixeira) {
 # A própria lixeira nunca entra na lista (caso esteja dentro de $CaminhoBackups)
 $arquivos = @(
     Get-ChildItem -LiteralPath $CaminhoBackups -Filter $NomeArquivos |
-        Where-Object { $_.FullName.TrimEnd('\') -ne $CaminhoLixeira.TrimEnd('\') } |
+        Where-Object { $_.FullName.TrimEnd('\') -ne $lixeiraCompleta } |
         Sort-Object CreationTime -Descending
 )
 LogInfo -Message "Foram encontradas $($arquivos.Count) arquivos em $CaminhoBackups"
@@ -62,23 +65,23 @@ $candidatas = @(
 )
 
 if ($candidatas.Count -eq 0) {
-    LogInfo -Message 'Nenhuma pasta para mover.'
+    LogInfo -Message 'Nenhum item para mover.'
 }
 else {
-    # Um lote por dia: C:\BKP-LIXO\2026-10-13\
+    # Um lote por dia: <CaminhoLixeira>\2026-10-13\
     $loteDia = Join-Path $CaminhoLixeira (Get-Date -Format 'yyyy-MM-dd')
 
     foreach ($arquivo in $candidatas) {
-        if ($PSCmdlet.ShouldProcess($arquivos.FullName, "Mover para $loteDia")) {
+        if ($PSCmdlet.ShouldProcess($arquivo.FullName, "Mover para $loteDia")) {
             try {
                 if (-not (Test-Path -LiteralPath $loteDia)) {
                     New-Item -ItemType Directory -Path $loteDia -Force | Out-Null
                 }
 
-                # Se já existir uma pasta com o mesmo nome no lote, acrescenta a hora
+                # Se já existir um item com o mesmo nome no lote, acrescenta a hora
                 $destino = Join-Path $loteDia $arquivo.Name
                 if (Test-Path -LiteralPath $destino) {
-                    $destino = Join-Path $loteDia ('{0}_{1}' -f $arquivos.Name, (Get-Date -Format 'HHmmss'))
+                    $destino = Join-Path $loteDia ('{0}_{1}' -f $arquivo.Name, (Get-Date -Format 'HHmmss'))
                 }
 
                 LogWarning -Message "Movendo $($arquivo.Name) para a lixeira (criada em $($arquivo.CreationTime.ToString('dd/MM/yyyy HH:mm')))"
@@ -90,6 +93,11 @@ else {
             }
         }
     }
+}
+
+if ($falhas -gt 0) {
+    LogWarning -Message "$falhas operação(ões) falharam."
+    exit 1
 }
 
 LogInfo -Message 'Concluído.'
