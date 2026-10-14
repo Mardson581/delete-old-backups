@@ -12,10 +12,7 @@ param (
     # Nunca move os N arquivos mais recentes, mesmo que estejam acima do limite
     [int]$MinimoManter = 3,
     # Preferencialmente no mesmo volume de $CaminhoBackups (mover vira só um renomear)
-    [string]$CaminhoLixeira = 'C:\BKP-Lixeira',
-    # 0 = nunca exclui da lixeira automaticamente (esvazie manualmente)
-    # >0 = exclui de vez os lotes que estão na lixeira há mais de N dias
-    [int]$DiasLixeira = 5
+    [string]$CaminhoLixeira = 'C:\BKP-Lixeira'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,7 +66,7 @@ if ($candidatas.Count -eq 0) {
 }
 else {
     # Um lote por dia: C:\BKP-LIXO\2026-10-13\
-    $loteDia = Join-Path $caminhoLixeira (Get-Date -Format 'yyyy-MM-dd')
+    $loteDia = Join-Path $CaminhoLixeira (Get-Date -Format 'yyyy-MM-dd')
 
     foreach ($arquivo in $candidatas) {
         if ($PSCmdlet.ShouldProcess($arquivos.FullName, "Mover para $loteDia")) {
@@ -95,38 +92,4 @@ else {
     }
 }
 
-# --- 2) Esvazia da lixeira o que passou do prazo (opcional) --------------------
-
-if ($DiasLixeira -gt 0 -and (Test-Path -LiteralPath $caminhoLixeira -PathType Container)) {
-    $limiteLixeira = (Get-Date).Date.AddDays(-$DiasLixeira)
-
-    foreach ($lote in Get-ChildItem -LiteralPath $caminhoLixeira -Directory) {
-        # O nome do lote é a data em que foi para a lixeira (não depende de CreationTime)
-        $dataLote = [datetime]::MinValue
-        $ok = [datetime]::TryParseExact($lote.Name, 'yyyy-MM-dd',
-            [Globalization.CultureInfo]::InvariantCulture,
-            [Globalization.DateTimeStyles]::None, [ref]$dataLote)
-
-        if (-not $ok) {
-            LogWarning -Message "Ignorando '$($lote.Name)' na lixeira (nome fora do padrão yyyy-MM-dd)."
-            continue
-        }
-
-        if ($dataLote -le $limiteLixeira -and $PSCmdlet.ShouldProcess($lote.FullName, 'Excluir definitivamente')) {
-            try {
-                LogWarning -Message "Excluindo definitivamente o lote $($lote.Name)"
-                Remove-Item -LiteralPath $lote.FullName -Recurse -Force
-            }
-            catch {
-                $falhas++
-                LogWarning -Message "Falha ao excluir o lote $($lote.Name): $($_.Exception.Message)"
-            }
-        }
-    }
-}
-
-if ($falhas -gt 0) {
-    LogWarning -Message "$falhas operação(ões) falharam."
-    exit 1
-}
 LogInfo -Message 'Concluído.'

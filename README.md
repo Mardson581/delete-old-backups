@@ -1,7 +1,7 @@
 
 # Limpeza de backups antigos
 
-Script em Powershell para automatizar a limpeza de backups antigos, removendo aqueles que ultrapassam um limite de dias configurável.
+Script em Powershell para automatizar a limpeza de backups antigos, movendo aqueles que ultrapassam um limite de dias configurável para uma pasta separada.
 
 
 ## Como usar
@@ -12,8 +12,6 @@ Script em Powershell para automatizar a limpeza de backups antigos, removendo aq
 `CaminhoBackups`| C:\BKP-Sistema | Caminho do diretório que contém as pastas de backup. |
 `NomeArquivos` | * | Filtro utilizado para identificar as pastas que serão consideradas na limpeza. |
 `MinimoManter` | 3 | Quantidade de pastas mais recentes que devem ser preservadas, independentemente da idade. |
-`CaminhoLixeira` | C:\BKP-Lixeira | Diretório para onde as pastas vão ao invés de serem excluídas |
-`DiasLixeira` | 5 | Quantidade de dias em que os arquivos ficarão na lixeira antes de serem excluídos |
 ## Exemplos
 
 #### Rodar em modo de simulação (não apaga nenhuma pasta, apenas indica)
